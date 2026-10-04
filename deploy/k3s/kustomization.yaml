@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - nvidia-device-plugin.yaml
+  - sglang.yaml
+  - web.yaml
+  - cloudflared.yaml
+
+configMapGenerator:
+  - name: sglang-web-content
+    namespace: llm
+    files:
+      - index.html=web/index.html
+  - name: sglang-web-config
+    namespace: llm
+    files:
+      - nginx.conf=web/nginx.conf

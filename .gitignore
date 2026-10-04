@@ -1,0 +1,11 @@
+.env
+.secrets/
+
+# Model weights are large, machine-local artifacts. Fetch them with
+# scripts/download-model.sh instead of committing them.
+/models/*
+!/models/.gitkeep
+
+# Local validation artifacts.
+__pycache__/
+*.py[cod]

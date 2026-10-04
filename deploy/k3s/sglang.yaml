@@ -1,0 +1,125 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sglang
+  namespace: llm
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sglang
+  template:
+    metadata:
+      labels:
+        app: sglang
+    spec:
+      runtimeClassName: nvidia
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: sglang
+          image: lmsysorg/sglang:v0.5.18-runtime
+          imagePullPolicy: IfNotPresent
+          command:
+            - python3
+            - -m
+            - sglang.launch_server
+          args:
+            - --model-path
+            - /models/qwen3
+            - --served-model-name
+            - qwen3-0.6b
+            - --host
+            - 0.0.0.0
+            - --port
+            - "30000"
+            - --api-key
+            - $(SGLANG_API_KEY)
+            - --reasoning-parser
+            - qwen3
+            - --enable-metrics
+            - --mem-fraction-static
+            - "0.65"
+            - --cuda-graph-max-bs-decode
+            - "8"
+          env:
+            - name: SGLANG_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: sglang-api
+                  key: api-key
+            - name: HF_HUB_OFFLINE
+              value: "1"
+            - name: TRANSFORMERS_OFFLINE
+              value: "1"
+          ports:
+            - name: http
+              containerPort: 30000
+              protocol: TCP
+          resources:
+            requests:
+              cpu: "1"
+              memory: 3Gi
+              nvidia.com/gpu: "1"
+            limits:
+              cpu: "6"
+              memory: 12Gi
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: model-cache
+              mountPath: /models/qwen3
+              readOnly: true
+            - name: dshm
+              mountPath: /dev/shm
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 90
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: model-cache
+          hostPath:
+            # Replaced by scripts/render-manifests.py during deployment.
+            path: __SGLANG_MODEL_PATH__
+            type: Directory
+        - name: dshm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 4Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sglang
+  namespace: llm
+spec:
+  type: ClusterIP
+  selector:
+    app: sglang
+  ports:
+    - name: http
+      port: 30000
+      targetPort: http
+      protocol: TCP
